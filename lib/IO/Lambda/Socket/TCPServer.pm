@@ -1,68 +1,73 @@
 use strict;
+use warnings;
 
 package IO::Lambda::Socket::TCPServer;
 
-use vars qw/$VERSION/;
-$VERSION = '0.01';
+use vars qw($VERSION @ISA @EXPORT_OK %EXPORT_TAGS);
+$VERSION = '0.009_2';
 
-use IO::Lambda qw/:all :dev/;
-use IO::Lambda::Socket qw/:all/;
+use IO::Lambda qw(:all :dev);
+use IO::Lambda::Socket qw(:all);
 use IO::Socket;
 
-use Time::HiRes qw/time/;
-use Digest::MD5 qw/md5_hex/;
+use Exporter;
+@ISA         = qw(Exporter);
+%EXPORT_TAGS = (all => \@EXPORT_OK);
+@EXPORT_OK   = qw(server_start client_accepted);
+use subs       @EXPORT_OK;
 
-sub new {
-    my $pkg    = shift;
-    my %param = @_;
+use Time::HiRes qw(time);
+use Digest::MD5 qw(md5_hex);
 
-    my $server = IO::Socket::INET->new(
-        Proto     => 'tcp',
-        Listen    => delete($param{Listen})    || 1024,
-        LocalPort => delete($param{LocalPort}) || 10000,
-        Blocking  => delete($param{Blocking})  || 1,
-    ) or die $!;
-    my $o = bless({ _server => $server, _heap => {} }, $pkg);
-    $o->{_serv} = $o->_make_proccesser($server, \%param);
+use YAML qw/Dump/;
 
-    return $o;
+my $heap;
+my $timeout;
+
+sub server_start (&) {
+    my $callback = shift;
+    my ($inet_param) = context;
+    $inet_param->{Listen}    ||= 1024;
+    $inet_param->{LocalPort} ||= 10000;
+    $inet_param->{Blocking}  ||= 1;
+    $inet_param->{Proto} = 'tcp';
+    $timeout = delete($inet_param->{Timeout}) || undef;
+    my $server = IO::Socket::INET->new(%$inet_param) or die $!;
+    $callback->($server);
 }
 
-sub _make_proccesser {
-    my ( $self, $server, $param ) = @_;
+sub client_accepted (&) {
+    my $client_input = shift;
+    my ( $server, $param ) = context;
+    $param->{ClientInput} = $client_input;
 
-    my $timeout = delete $param->{Timeout};
     my $accepted = __PACKAGE__.'::Accepted';
     $accepted->_make_methods($param);
-    return lambda {
-        context $server;
-        accept { # constructer
-            my $conn   = shift;
-            my $sessid = md5_hex(time);
-            $self->{_heap}->{$sessid} = {};
+    context $server, $timeout;
+    accept { # constructer
+        my $conn   = shift;
+        my $sessid = md5_hex(time);
+            $heap->{$sessid} = {};
             my $accepted_o = $accepted->new(
                 _socket => $conn,
                 _sessid => $sessid,
-                Heap    => $self->{_heap}->{$sessid},
+                Heap    => $heap->{$sessid},
             );
             $accepted_o->client_connected();
             again;
-        context getline, $conn, \$self->{_b}, $timeout;
-        tail {   # getlined
-            $accepted_o->parse(@_);
-            if($accepted_o->will_close) {
-                delete $self->{_heap}->{$sessid};
-                delete $accepted_o->{_socket};
-                close $conn;
-            }
-            else {
-                again;
-            }
-        }};
-    };
+    context getline, $conn, \(my $b);
+    tail {   # getlined
+        $accepted_o->parse(@_);
+        if($accepted_o->will_close) {
+            delete $heap->{$sessid};
+            delete $accepted_o->{_socket};
+            $conn->close;
+        }
+        else {
+            again;
+        }
+    }};
 }
-
-sub run { shift->{_serv}->wait; }
 
 1;
 
@@ -70,7 +75,6 @@ package IO::Lambda::Socket::TCPServer::Accepted;
 
 sub _make_methods {
     my ( $pkg, $param ) = @_;
-    warn "why wouldn't you process input?" unless $param->{ClientInput};
     no strict 'refs';
     *{"${pkg}::client_connected"}    = $param->{ClientConnected}    || sub { };
     *{"${pkg}::client_disconnected"} = $param->{ClientDisconnected} || sub { };
@@ -120,26 +124,32 @@ IO::Lambda::Socket::TCPServer -
 
 =head1 SYNOPSIS
 
-  use IO::Lambda::Socket::TCPServer;
+  use IO::Lambda qw/:all/;
+  use IO::Lambda::Socket::TCPServer qw/:all/;
 
-  my $server = IO::Lambda::Socket::TCPServer->new(
-      Listen      => 32,
-      LocalPort   => 10000,
-      ClientInput => sub {
+  my $server = lambda {
+      context { Listen => 32, LocalPort => 10000 };
+      server_start {
+          my $conn = shift;
+          context $conn, {
+              ClientConnected => sub {
+                  my $accepted = shift;
+                  print "connected $accepted->{_sessid}\n";
+              },
+              ClientDisconnected => sub {
+                  my $accepted = shift;
+                  print "disconnected $accepted->{_sessid}\n";
+              },
+          };
+      client_accepted {
+          # similar for ClientInput parameter in POCo::Server::TCP
           my $accepted = shift;
           my $buf      = shift;
           $accepted->put("[INPUT] $buf");
-      },
-      ClientConnected => sub {
-          my $accepted = shift;
-          print "connected $accepted->{_sessid}\n";
-      },
-      ClientDisconnected => sub {
-          my $accepted = shift;
-          print "disconnected $accepted->{_sessid}\n";
-      },
-  );
-  $server->run;
+      }};
+  };
+
+  $server->wait;
 
 =head1 DESCRIPTION
 
