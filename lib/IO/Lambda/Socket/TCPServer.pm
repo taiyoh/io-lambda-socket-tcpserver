@@ -31,7 +31,7 @@ sub server_start (&) {
     $inet_param->{LocalPort} ||= 10000;
     $inet_param->{Blocking}  ||= 1;
     $inet_param->{Proto} = 'tcp';
-    $timeout = delete($inet_param->{Timeout}) || undef;
+    $timeout = delete $inet_param->{Timeout};
     my $server = IO::Socket::INET->new(%$inet_param) or die $!;
     $callback->($server);
 }
@@ -43,19 +43,19 @@ sub client_accepted (&) {
 
     my $accepted = __PACKAGE__.'::Accepted';
     $accepted->_make_methods($param);
-    context $server, $timeout;
+    context $server;
     accept { # constructer
         my $conn   = shift;
         my $sessid = md5_hex(time);
-            $heap->{$sessid} = {};
-            my $accepted_o = $accepted->new(
-                _socket => $conn,
-                _sessid => $sessid,
-                Heap    => $heap->{$sessid},
-            );
-            $accepted_o->client_connected();
-            again;
-    context getline, $conn, \(my $b);
+        $heap->{$sessid} = {};
+        my $accepted_o = $accepted->new(
+            _socket => $conn,
+            _sessid => $sessid,
+            Heap    => $heap->{$sessid},
+        );
+        $accepted_o->client_connected();
+        again;
+        context getline, $conn, \(my $b), $timeout;
     tail {   # getlined
         $accepted_o->parse(@_);
         if($accepted_o->will_close) {
