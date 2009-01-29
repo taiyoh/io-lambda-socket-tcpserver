@@ -35,9 +35,8 @@ sub server_start (&) {
 }
 
 sub client_accepted (&) {
-    my $client_input = shift;
     my ( $server, $param ) = context;
-    $param->{ClientInput} = $client_input;
+    $param->{ClientInput} = shift;
     my $accepted = __PACKAGE__.'::Accepted';
     $accepted->_make_methods($param);
     context $server;
@@ -64,51 +63,6 @@ sub client_accepted (&) {
             again;
         }
     }};
-}
-
-1;
-
-package IO::Lambda::Socket::TCPServer::Accepted;
-
-sub _make_methods {
-    my ( $pkg, $param ) = @_;
-    no strict 'refs';
-    *{"${pkg}::client_connected"}    = $param->{ClientConnected}    || sub { };
-    *{"${pkg}::client_disconnected"} = $param->{ClientDisconnected} || sub { };
-    *{"${pkg}::client_error"}        = $param->{ClientError}        || sub { };
-    *{"${pkg}::client_input"}        = $param->{ClientInput};
-}
-
-sub new {
-    my ( $pkg, %param ) = @_;
-    return bless \%param, $pkg;
-}
-
-sub parse {
-    my ( $self, $buf, $err ) = @_;
-
-    $self->{_close} = 0;
-    if ( $err && $err =~ /^(eof|timeout)$/ ) {
-        $self->client_disconnected($err, $buf);
-        $self->close;
-    }
-    elsif ($err) {
-        $self->client_error($err, $buf);
-    }
-    else {
-        $buf =~ s/\r\n//g;
-        $self->client_input($buf);
-        $self->{_close} = 0;
-    }
-}
-
-sub close { shift->{_close} = 1; }
-
-sub will_close { shift->{_close} }
-
-sub put {
-    my ( $self, $buf ) = @_;
-    syswrite( $self->{_socket}, "$buf\r\n" );
 }
 
 1;
