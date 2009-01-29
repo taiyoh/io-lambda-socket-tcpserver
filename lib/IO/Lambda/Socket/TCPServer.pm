@@ -19,6 +19,8 @@ use subs       @EXPORT_OK;
 use Time::HiRes qw(time);
 use Digest::MD5 qw(md5_hex);
 
+use IO::Lambda::Socket::TCPServer::Accepted;
+
 my $heap;
 my $timeout;
 
