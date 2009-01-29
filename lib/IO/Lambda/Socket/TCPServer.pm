@@ -19,19 +19,17 @@ use subs       @EXPORT_OK;
 use Time::HiRes qw(time);
 use Digest::MD5 qw(md5_hex);
 
-use YAML qw/Dump/;
-
 my $heap;
 my $timeout;
 
 sub server_start (&) {
     my $callback = shift;
     my ($inet_param) = context;
+    $timeout = delete $inet_param->{Timeout};
+    $inet_param->{LocalPort} = delete($inet_param->{Port}) || 10000;
     $inet_param->{Listen}    ||= 1024;
-    $inet_param->{LocalPort} ||= 10000;
     $inet_param->{Blocking}  ||= 1;
     $inet_param->{Proto} = 'tcp';
-    $timeout = delete $inet_param->{Timeout};
     my $server = IO::Socket::INET->new(%$inet_param) or die $!;
     $callback->($server);
 }
@@ -40,7 +38,6 @@ sub client_accepted (&) {
     my $client_input = shift;
     my ( $server, $param ) = context;
     $param->{ClientInput} = $client_input;
-
     my $accepted = __PACKAGE__.'::Accepted';
     $accepted->_make_methods($param);
     context $server;
@@ -91,7 +88,7 @@ sub parse {
     my ( $self, $buf, $err ) = @_;
 
     $self->{_close} = 0;
-    if ( $err && $err =~ /^(eof|timeout)/ ) {
+    if ( $err && $err =~ /^(eof|timeout)$/ ) {
         $self->client_disconnected($err, $buf);
         $self->close;
     }
@@ -99,7 +96,7 @@ sub parse {
         $self->client_error($err, $buf);
     }
     else {
-        $buf =~ s/(\r|\n)//g;# あとでFilterクラスつくって何とかできるよね
+        $buf =~ s/\r\n//g;
         $self->client_input($buf);
         $self->{_close} = 0;
     }
@@ -110,8 +107,7 @@ sub close { shift->{_close} = 1; }
 sub will_close { shift->{_close} }
 
 sub put {
-    my $self = shift;
-    my $buf  = shift;
+    my ( $self, $buf ) = @_;
     syswrite( $self->{_socket}, "$buf\r\n" );
 }
 
@@ -120,7 +116,7 @@ __END__
 
 =head1 NAME
 
-IO::Lambda::Socket::TCPServer - 
+IO::Lambda::Socket::TCPServer - a simplified TCP server
 
 =head1 SYNOPSIS
 
