@@ -77,29 +77,32 @@ IO::Lambda::Socket::TCPServer - a simplified TCP server
   use IO::Lambda qw/:all/;
   use IO::Lambda::Socket::TCPServer qw/:all/;
 
-  my $server = lambda {
-      context { Listen => 32, LocalPort => 10000 };
+  this lambda {
+      context { Port => 10000 };
       server_start {
-          my $conn = shift;
+          my $conn = shift; # IO::Socket::INET
           context $conn, {
-              ClientConnected => sub {
-                  my $accepted = shift;
-                  print "connected $accepted->{_sessid}\n";
-              },
-              ClientDisconnected => sub {
-                  my $accepted = shift;
-                  print "disconnected $accepted->{_sessid}\n";
-              },
+              ClientConnected => \&client_connected_handler,
+              ClientDisconnected => \&client_disconnected_handler,
           };
       client_accepted {
           # similar for ClientInput parameter in POCo::Server::TCP
-          my $accepted = shift;
-          my $buf      = shift;
-          $accepted->put("[INPUT] $buf");
+          my ( $client, $input ) = @_;
+          $client->put("$input"); # it's echo server
       }};
   };
 
-  $server->wait;
+  sub client_connected_handler {
+      my $client = shift;
+      print "connected $client->{_sessid}\n";
+  }
+
+  sub client_disconnected_handler {
+      my ( $client, $err ) = @_;
+      print "disconnected $client->{_sessid}\n";
+  }
+
+  this->wait;
 
 =head1 DESCRIPTION
 
