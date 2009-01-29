@@ -1,0 +1,8 @@
+Benchmark: timing 1 iterations of lambda, poco...
+    lambda:  3 wallclock secs ( 1.15 usr  0.82 sys +  1.78 cusr  0.03 csys =  3.78 CPU) @  0.26/s (n=1)
+            (warning: too few iterations for a reliable count)
+      poco:  7 wallclock secs ( 1.20 usr  0.81 sys +  5.70 cusr  0.02 csys =  7.73 CPU) @  0.13/s (n=1)
+            (warning: too few iterations for a reliable count)
+       s/iter   poco lambda
+poco     7.73     --   -51%
+lambda   3.78   104%     --
